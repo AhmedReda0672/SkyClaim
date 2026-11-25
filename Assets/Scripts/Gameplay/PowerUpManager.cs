@@ -71,7 +71,7 @@ public class PowerUpManager : MonoBehaviour
         Vector3 spawnPos = grid.GetRandomUnclaimedPosition();
         if (spawnPos == Vector3.zero) return;
 
-        spawnPos.y = 0.5f;
+        spawnPos.y = 0.75f;
 
         // Choose random type
         PowerUpType type = (PowerUpType)Random.Range(0, 5);

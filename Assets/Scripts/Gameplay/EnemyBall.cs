@@ -58,11 +58,12 @@ public class EnemyBall : MonoBehaviour
 
         if (ballRenderer != null)
         {
-            Material mat = new Material(Shader.Find("Standard"));
-            mat.color = color;
-            mat.EnableKeyword("_EMISSION");
-            mat.SetColor("_EmissionColor", color * 0.6f);
-            ballRenderer.material = mat;
+            // Tint authentic sci-fi ball material's emission to reflect level/color while keeping detailed texture
+            if (ballRenderer.material != null && ballRenderer.material.HasProperty("_EmissionColor"))
+            {
+                ballRenderer.material.EnableKeyword("_EMISSION");
+                ballRenderer.material.SetColor("_EmissionColor", color * 0.75f);
+            }
         }
 
         if (trailRenderer != null)
@@ -86,16 +87,20 @@ public class EnemyBall : MonoBehaviour
 
         if (_grid != null)
         {
-            // Predict future cell state along X and Z axes independently
-            Vector2Int checkCellX = _grid.WorldToGrid(new Vector3(newPos.x, newPos.y, _rb.position.z));
-            Vector2Int checkCellZ = _grid.WorldToGrid(new Vector3(_rb.position.x, newPos.y, newPos.z));
+            // Predict future cell state along X and Z axes independently using ball leading edge
+            const float edgeOffset = 0.45f;
+            float offsetX = Mathf.Abs(_velocity.x) > 0.001f ? Mathf.Sign(_velocity.x) * edgeOffset : 0f;
+            float offsetZ = Mathf.Abs(_velocity.z) > 0.001f ? Mathf.Sign(_velocity.z) * edgeOffset : 0f;
+
+            Vector2Int checkCellX = _grid.WorldToGrid(new Vector3(newPos.x + offsetX, newPos.y, _rb.position.z));
+            Vector2Int checkCellZ = _grid.WorldToGrid(new Vector3(_rb.position.x, newPos.y, newPos.z + offsetZ));
 
             CellState stateX = _grid.GetCellState(checkCellX.x, checkCellX.y);
             CellState stateZ = _grid.GetCellState(checkCellZ.x, checkCellZ.y);
 
             bool bounced = false;
 
-            // Bounce off Captured cells and outer Walls
+            // Bounce off Captured cells and outer Walls (keep balls strictly outside safe border)
             if (stateX == CellState.Wall || stateX == CellState.Captured)
             {
                 _velocity.x = -_velocity.x + Random.Range(-bounceRandomness, bounceRandomness);
@@ -125,15 +130,24 @@ public class EnemyBall : MonoBehaviour
                 return;
             }
 
-            // Keep within arena bounds
-            float halfW = _grid.gridWidth * _grid.cellSize * 0.5f - _grid.cellSize * 1.2f;
-            float halfH = _grid.gridHeight * _grid.cellSize * 0.5f - _grid.cellSize * 1.2f;
+            // Keep within playable interior bounds (strictly inside outer black border)
+            float borderPad = _grid.borderThickness * _grid.cellSize + 0.45f;
+            float halfW = _grid.gridWidth * _grid.cellSize * 0.5f - borderPad;
+            float halfH = _grid.gridHeight * _grid.cellSize * 0.5f - borderPad;
             newPos.x = Mathf.Clamp(newPos.x, -halfW, halfW);
             newPos.z = Mathf.Clamp(newPos.z, -halfH, halfH);
         }
 
         newPos.y = 0.5f;
         _rb.MovePosition(newPos);
+
+        // Visual rolling rotation of the sci-fi ball across the platform
+        if (_velocity.sqrMagnitude > 0.01f)
+        {
+            Vector3 rollAxis = Vector3.Cross(Vector3.up, _velocity.normalized);
+            float rollSpeed = (currentSpeed / 0.4f) * Mathf.Rad2Deg;
+            transform.Rotate(rollAxis, rollSpeed * Time.fixedDeltaTime, Space.World);
+        }
     }
 
     private void OnTriggerEnter(Collider other)

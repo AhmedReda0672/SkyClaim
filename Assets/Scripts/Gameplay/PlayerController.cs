@@ -36,6 +36,7 @@ public class PlayerController : MonoBehaviour
                           RigidbodyConstraints.FreezeRotationX |
                           RigidbodyConstraints.FreezeRotationY |
                           RigidbodyConstraints.FreezeRotationZ;
+        _rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
         _currentSpeed = moveSpeed;
     }
 
@@ -51,7 +52,7 @@ public class PlayerController : MonoBehaviour
         // Propeller rotation
         if (propeller != null)
         {
-            propeller.Rotate(Vector3.up, 500f * Time.deltaTime);
+            propeller.Rotate(Vector3.right, 1200f * Time.deltaTime, Space.Self);
         }
 
         // Pause input
@@ -85,6 +86,15 @@ public class PlayerController : MonoBehaviour
         if (moveDir != Vector3.zero)
         {
             _rb.velocity = moveDir * _currentSpeed;
+
+            // Smoothly orient aircraft towards movement direction with flight banking tilt
+            Quaternion targetRot = Quaternion.LookRotation(moveDir, Vector3.up);
+            if (moveDir == Vector3.left)
+                targetRot *= Quaternion.Euler(0, 0, 18f);
+            else if (moveDir == Vector3.right)
+                targetRot *= Quaternion.Euler(0, 0, -18f);
+
+            transform.rotation = Quaternion.RotateTowards(transform.rotation, targetRot, 720f * Time.fixedDeltaTime);
         }
         else
         {
@@ -113,7 +123,7 @@ public class PlayerController : MonoBehaviour
         Vector3 pos = transform.position;
         float halfW = _grid.gridWidth * _grid.cellSize * 0.5f;
         float halfH = _grid.gridHeight * _grid.cellSize * 0.5f;
-        float margin = _grid.cellSize * 1.5f;
+        float margin = _grid.cellSize * 0.5f;
 
         pos.x = Mathf.Clamp(pos.x, -halfW + margin, halfW - margin);
         pos.z = Mathf.Clamp(pos.z, -halfH + margin, halfH - margin);
@@ -124,8 +134,10 @@ public class PlayerController : MonoBehaviour
 
     public void Respawn(Vector3 position)
     {
+        position.y = 0.5f;
         gameObject.SetActive(true);
         transform.position = position;
+        transform.rotation = Quaternion.identity;
         _rb.velocity = Vector3.zero;
         _rb.angularVelocity = Vector3.zero;
         _isAlive = true;

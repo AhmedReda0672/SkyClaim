@@ -11,14 +11,14 @@ public class SkyEnvironment : MonoBehaviour
     [Header("Atmospheric Fog Configuration")]
     public bool enableFog = true;
     public Color skyColor = new Color(0.52f, 0.74f, 0.98f, 1f);
-    public float fogStartDistance = 28f;
-    public float fogEndDistance = 62f;
+    public float fogStartDistance = 42f;
+    public float fogEndDistance = 85f;
 
     [Header("Cloud Deck")]
     public int cloudCount = 36;
-    public float deckHeight = -2.8f;
+    public float deckHeight = -3.5f;   // below arena floor (y=0) so clouds never poke through
     public float driftSpeed = 0.55f;
-    public Vector2 deckBounds = new Vector2(85f, 75f);
+    public Vector2 deckBounds = new Vector2(92f, 80f);
 
     private readonly List<Transform> _cloudPuffs = new List<Transform>();
     private readonly List<Vector3> _initialOffsets = new List<Vector3>();
@@ -88,13 +88,13 @@ public class SkyEnvironment : MonoBehaviour
             // Pseudo-random distribution over deck bounds
             float x = Random.Range(-deckBounds.x * 0.5f, deckBounds.x * 0.5f);
             float z = Random.Range(-deckBounds.y * 0.5f, deckBounds.y * 0.5f);
-            float y = Random.Range(-0.8f, 0.8f);
+            float y = Random.Range(-1.5f, -0.2f); // keep clouds below arena floor
 
             puff.transform.localPosition = new Vector3(x, y, z);
 
             // Flattened puffy ellipsoid scale
             float scaleX = Random.Range(6f, 13f);
-            float scaleY = Random.Range(2f, 4f);
+            float scaleY = Random.Range(1.2f, 2.5f); // flatter = stays below y=0
             float scaleZ = Random.Range(6f, 13f);
             puff.transform.localScale = new Vector3(scaleX, scaleY, scaleZ);
 
@@ -111,25 +111,25 @@ public class SkyEnvironment : MonoBehaviour
         var perimeterRoot = new GameObject("PerimeterClouds").transform;
         perimeterRoot.SetParent(transform, false);
 
-        // Positions along Left, Right, Bottom, Top of 40x30 arena
+        // Positions along Left, Right, Bottom, Top of 44x34 arena ([-22..22] x [-17..17])
         Vector3[] perimeterSpots = new Vector3[]
         {
-            // Left edge (x = -22 to -25)
-            new Vector3(-24f, -1.2f, -10f),
-            new Vector3(-25f, -0.8f, 0f),
-            new Vector3(-24f, -1.4f, 10f),
-            // Right edge (x = 22 to 25)
-            new Vector3(24f, -1.1f, -10f),
-            new Vector3(25f, -0.9f, 0f),
-            new Vector3(24f, -1.3f, 10f),
-            // Bottom edge (z = -17 to -20)
-            new Vector3(-12f, -1.5f, -18f),
-            new Vector3(0f, -1.2f, -19f),
-            new Vector3(12f, -1.6f, -18f),
-            // Top edge (z = 17 to 20)
-            new Vector3(-12f, -1.0f, 18f),
-            new Vector3(0f, -0.7f, 19f),
-            new Vector3(12f, -1.1f, 18f)
+            // Left edge (x = -26 to -27)
+            new Vector3(-26f, -2.5f, -11f),
+            new Vector3(-27f, -2.2f, 0f),
+            new Vector3(-26f, -2.6f, 11f),
+            // Right edge (x = 26 to 27)
+            new Vector3(26f, -2.4f, -11f),
+            new Vector3(27f, -2.3f, 0f),
+            new Vector3(26f, -2.5f, 11f),
+            // Bottom edge (z = -20 to -21)
+            new Vector3(-13f, -2.8f, -20f),
+            new Vector3(0f, -2.5f, -21f),
+            new Vector3(13f, -2.9f, -20f),
+            // Top edge (z = 20 to 21)
+            new Vector3(-13f, -2.3f, 20f),
+            new Vector3(0f, -2.1f, 21f),
+            new Vector3(13f, -2.4f, 20f)
         };
 
         for (int i = 0; i < perimeterSpots.Length; i++)
@@ -143,7 +143,7 @@ public class SkyEnvironment : MonoBehaviour
 
             puff.GetComponent<Renderer>().sharedMaterial = _cloudMat;
             puff.transform.localPosition = perimeterSpots[i];
-            puff.transform.localScale = new Vector3(Random.Range(5f, 9f), Random.Range(2f, 3.5f), Random.Range(5f, 8f));
+            puff.transform.localScale = new Vector3(Random.Range(5f, 9f), Random.Range(1f, 2f), Random.Range(5f, 8f));
 
             _cloudPuffs.Add(puff.transform);
             _initialOffsets.Add(puff.transform.localPosition);

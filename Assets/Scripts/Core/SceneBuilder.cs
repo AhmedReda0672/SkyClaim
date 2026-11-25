@@ -204,8 +204,8 @@ public static class SceneBuilder
         RenderSettings.fog = true;
         RenderSettings.fogMode = FogMode.Linear;
         RenderSettings.fogColor = new Color(0.52f, 0.74f, 0.98f, 1f);
-        RenderSettings.fogStartDistance = 28f;
-        RenderSettings.fogEndDistance = 62f;
+        RenderSettings.fogStartDistance = 42f;
+        RenderSettings.fogEndDistance = 85f;
         
         // --- Camera ---
         var camGO = new GameObject("Main Camera");
@@ -216,13 +216,13 @@ public static class SceneBuilder
         cam.fieldOfView = 48f;
         camGO.AddComponent<AudioListener>();
         var camCtrl = camGO.AddComponent<CameraController>();
-        camCtrl.height = 31f;
-        camCtrl.distanceZ = -23.5f;
-        camCtrl.tiltAngle = 55f;
+        camCtrl.height = 34f;
+        camCtrl.distanceZ = -27.5f;
+        camCtrl.tiltAngle = 53f;
         camCtrl.baseFieldOfView = 48f;
         camCtrl.adaptiveAspectFraming = true;
-        camGO.transform.position = new Vector3(0, 31f, -23.5f);
-        camGO.transform.rotation = Quaternion.Euler(55f, 0, 0);
+        camGO.transform.position = new Vector3(0, 34f, -27.5f);
+        camGO.transform.rotation = Quaternion.Euler(53f, 0, 0);
         
         // --- EventSystem ---
         var esGO = new GameObject("EventSystem");
@@ -247,9 +247,17 @@ public static class SceneBuilder
         // --- Territory Grid ---
         var gridGO = new GameObject("TerritoryGrid");
         var grid = gridGO.AddComponent<TerritoryGrid>();
-        grid.gridWidth = 40;
-        grid.gridHeight = 30;
+        grid.gridWidth = 44;
+        grid.gridHeight = 34;
+        grid.borderThickness = 2;
         grid.cellSize = 1f;
+
+        // --- Arena Floor Collider (invisible, keeps everything above y=0) ---
+        // Grid is 44x34 centered at origin; we add a thin box collider at y = -0.05
+        var floorGO = new GameObject("ArenaFloor");
+        var floorCol = floorGO.AddComponent<BoxCollider>();
+        floorCol.size = new Vector3(48f, 0.1f, 38f);   // slightly wider than grid
+        floorGO.transform.position = new Vector3(0f, -0.05f, 0f);
         
         // Create materials for grid
         grid.capturedMaterial = CreateColorMaterial("CapturedMat", new Color(0.2f, 0.6f, 1f, 1f));
@@ -261,14 +269,34 @@ public static class SceneBuilder
         Directory.CreateDirectory("Assets/Prefabs");
         AssetDatabase.Refresh();
 
-        // --- Enemy Spawner ---
+        // --- Enemy Spawner with Diverse Sci-Fi Ball Models ---
         var enemySpawnerGO = new GameObject("EnemySpawner");
         var enemySpawner = enemySpawnerGO.AddComponent<EnemySpawner>();
         
-        // Create enemy ball prefab in scene (we'll make a prefab-like object)
-        var enemyBallTemplate = CreateEnemyBallGameObject();
-        enemySpawner.enemyBallPrefab = PrefabUtility.SaveAsPrefabAsset(enemyBallTemplate, "Assets/Prefabs/EnemyBall.prefab");
-        GameObject.DestroyImmediate(enemyBallTemplate);
+        string[] sciFiBallModels = new string[]
+        {
+            "RollingBalls_Sci-fi_3_1",
+            "RollingBalls_Sci-fi_3_2",
+            "RollingBalls_Sci-fi_3_3",
+            "RollingBalls_Sci-fi_3_4",
+            "RollingBalls_Sci-fi_3_5",
+            "RollingBalls_Sci-fi_4_1",
+            "RollingBalls_Sci-fi_4_2",
+            "RollingBalls_Sci-fi_4_3",
+            "RollingBalls_Sci-fi_4_4",
+            "RollingBalls_Sci-fi_4_5"
+        };
+        var ballPrefabsList = new System.Collections.Generic.List<GameObject>();
+        for (int i = 0; i < sciFiBallModels.Length; i++)
+        {
+            var enemyBallTemplate = CreateEnemyBallGameObject(sciFiBallModels[i]);
+            var saved = PrefabUtility.SaveAsPrefabAsset(enemyBallTemplate, $"Assets/Prefabs/EnemyBall_{i + 1}.prefab");
+            GameObject.DestroyImmediate(enemyBallTemplate);
+            if (saved != null) ballPrefabsList.Add(saved);
+        }
+        enemySpawner.enemyBallPrefabs = ballPrefabsList.ToArray();
+        if (ballPrefabsList.Count > 0)
+            enemySpawner.enemyBallPrefab = ballPrefabsList[0];
         
         // --- Mine Spawner ---
         var mineSpawnerGO = new GameObject("MineSpawner");
@@ -353,42 +381,56 @@ public static class SceneBuilder
         return mat;
     }
     
-    private static GameObject CreateEnemyBallGameObject()
+    private static GameObject CreateEnemyBallGameObject(string modelName = "RollingBalls_Sci-fi_1_1")
     {
-        var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        go.name = "EnemyBall";
-        go.transform.localScale = new Vector3(0.8f, 0.8f, 0.8f);
-        
+        var go = new GameObject($"EnemyBall_{modelName}");
+
+        // Load authentic diverse sci-fi ball model from Rolling_Balls-Sci-fi_Pack
+        string prefabPath = $"Assets/Rolling_Balls-Sci-fi_Pack/Rolling_Balls-Sci-fi_Pack_SRP_Build/Prefab/{modelName}.prefab";
+        var ballAsset = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+        Renderer mainRenderer = null;
+
+        if (ballAsset != null)
+        {
+            var visual = (GameObject)PrefabUtility.InstantiatePrefab(ballAsset);
+            PrefabUtility.UnpackPrefabInstance(visual, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
+            visual.name = "Visual";
+            visual.transform.SetParent(go.transform, false);
+            visual.transform.localPosition = Vector3.zero;
+            visual.transform.localScale = Vector3.one * 0.8f;
+            foreach (var col in visual.GetComponentsInChildren<Collider>()) Destroy(col);
+            mainRenderer = visual.GetComponentInChildren<Renderer>();
+        }
+        else
+        {
+            var sphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            sphere.transform.SetParent(go.transform, false);
+            sphere.transform.localScale = Vector3.one * 0.8f;
+            mainRenderer = sphere.GetComponent<Renderer>();
+            Destroy(sphere.GetComponent<Collider>());
+        }
+
         var rb = go.AddComponent<Rigidbody>();
         rb.useGravity = false;
-        
-        // Replace box collider with sphere (already has sphere from CreatePrimitive)
-        // Make trigger for detection
-        var sc = go.GetComponent<SphereCollider>();
-        if (sc) sc.isTrigger = true;
-        
-        // Add physics collider
-        var physCol = go.AddComponent<SphereCollider>();
-        physCol.radius = 0.4f;
-        physCol.isTrigger = false;
-        
+        rb.constraints = RigidbodyConstraints.FreezePositionY | RigidbodyConstraints.FreezeRotation;
+        rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
+
+        // Trigger collider for territory & player detection
+        var sc = go.AddComponent<SphereCollider>();
+        sc.radius = 0.55f;
+        sc.isTrigger = true;
+
         var ball = go.AddComponent<EnemyBall>();
-        ball.ballRenderer = go.GetComponent<Renderer>();
-        
-        // Trail
+        ball.ballRenderer = mainRenderer;
+
+        // Glowing Sci-Fi Trail
         var trail = go.AddComponent<TrailRenderer>();
-        trail.startWidth = 0.3f;
-        trail.endWidth = 0f;
-        trail.time = 0.5f;
+        trail.startWidth = 0.35f;
+        trail.endWidth = 0.05f;
+        trail.time = 0.45f;
+        trail.material = new Material(Shader.Find("Sprites/Default"));
         ball.trailRenderer = trail;
-        
-        // Material
-        var mat = new Material(Shader.Find("Standard"));
-        mat.color = Color.red;
-        mat.EnableKeyword("_EMISSION");
-        mat.SetColor("_EmissionColor", Color.red * 0.5f);
-        go.GetComponent<Renderer>().sharedMaterial = mat;
-        
+
         return go;
     }
     
@@ -413,6 +455,8 @@ public static class SceneBuilder
         
         var rb = go.AddComponent<Rigidbody>();
         rb.useGravity = false;
+        rb.constraints = RigidbodyConstraints.FreezePositionY | RigidbodyConstraints.FreezeRotation;
+        rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
         
         var mine = go.AddComponent<MineController>();
         mine.mineRenderer = body.GetComponent<Renderer>();
@@ -423,30 +467,87 @@ public static class SceneBuilder
     private static GameObject CreatePowerUpGameObject(PowerUpType type)
     {
         var go = new GameObject($"PowerUp_{type}");
-        
-        PrimitiveType shape = type == PowerUpType.ExtraLife ? PrimitiveType.Capsule : PrimitiveType.Cube;
-        var visual = GameObject.CreatePrimitive(shape);
-        visual.transform.SetParent(go.transform);
-        visual.transform.localScale = new Vector3(0.5f, 0.5f, 0.5f);
-        Destroy(visual.GetComponent<Collider>());
-        
-        var col = go.AddComponent<SphereCollider>();
-        col.radius = 0.5f;
-        col.isTrigger = true;
-        
+
+        // Map type to authentic BTM 3D asset prefab
+        string prefabName = type switch
+        {
+            PowerUpType.ExtraLife => "Heart",
+            PowerUpType.ExtraTime => "Clock",
+            PowerUpType.Slow => "Spiral",
+            PowerUpType.Speed => "Thunder",
+            PowerUpType.ScoreBonus => "Coin",
+            _ => "Coin"
+        };
+
+        string prefabPath = $"Assets/BTM_Assets/BTM_Items_Gems/Prefabs/{prefabName}.prefab";
+        var puAsset = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+        Renderer mainRenderer = null;
+
+        if (puAsset != null)
+        {
+            var visual = (GameObject)PrefabUtility.InstantiatePrefab(puAsset);
+            PrefabUtility.UnpackPrefabInstance(visual, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
+            visual.name = "Visual";
+            visual.transform.SetParent(go.transform, false);
+            visual.transform.localPosition = new Vector3(0f, 0.55f, 0f);
+            visual.transform.localScale = Vector3.one * 0.85f;
+            foreach (var col in visual.GetComponentsInChildren<Collider>()) Destroy(col);
+            foreach (var anim in visual.GetComponentsInChildren<Benjathemaker.SimpleGemsAnim>()) Destroy(anim);
+            
+            // Destroy the grey PowerUp_Sphere outer shell embedded in TeKniKo prefabs
+            var toRemove = new System.Collections.Generic.List<GameObject>();
+            foreach (var t in visual.GetComponentsInChildren<Transform>(true))
+            {
+                if (t != visual.transform && (t.name.Contains("Sphere") || t.name.Contains("PowerUp_Sphere")))
+                {
+                    toRemove.Add(t.gameObject);
+                }
+            }
+            foreach (var obj in toRemove)
+            {
+                Destroy(obj);
+            }
+            
+            // Get renderer from the main 3D icon model
+            foreach (var r in visual.GetComponentsInChildren<Renderer>())
+            {
+                mainRenderer = r;
+                break;
+            }
+        }
+        else
+        {
+            var visual = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            visual.transform.SetParent(go.transform, false);
+            visual.transform.localScale = Vector3.one * 0.5f;
+            mainRenderer = visual.GetComponent<Renderer>();
+            Destroy(visual.GetComponent<Collider>());
+        }
+
+        var sc = go.AddComponent<SphereCollider>();
+        sc.center = new Vector3(0f, 0.1f, 0f);
+        sc.radius = 0.95f;
+        sc.isTrigger = true;
+
+        var rb = go.AddComponent<Rigidbody>();
+        rb.useGravity = false;
+        rb.isKinematic = true;
+        rb.constraints = RigidbodyConstraints.FreezePositionY | RigidbodyConstraints.FreezeRotation;
+
         var puComp = go.AddComponent<PowerUp>();
         puComp.type = type;
-        puComp.powerUpRenderer = visual.GetComponent<Renderer>();
-        
-        // Add light
+        puComp.powerUpRenderer = mainRenderer;
+
+        // Glowing Point Light
         var lightGO = new GameObject("Light");
-        lightGO.transform.SetParent(go.transform);
+        lightGO.transform.SetParent(go.transform, false);
+        lightGO.transform.localPosition = new Vector3(0, 0.65f, 0);
         var light = lightGO.AddComponent<Light>();
         light.type = LightType.Point;
         light.range = 3f;
-        light.intensity = 1f;
+        light.intensity = 1.5f;
         puComp.powerUpLight = light;
-        
+
         return go;
     }
     
@@ -455,72 +556,72 @@ public static class SceneBuilder
         var playerGO = new GameObject("Player");
         playerGO.tag = "Player";
         playerGO.layer = LayerMask.NameToLayer("Default");
-        
-        // Aircraft body
-        var bodyGO = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-        bodyGO.name = "Body";
-        bodyGO.transform.SetParent(playerGO.transform);
-        bodyGO.transform.localPosition = Vector3.zero;
-        bodyGO.transform.localRotation = Quaternion.Euler(90, 0, 0); // Horizontal
-        bodyGO.transform.localScale = new Vector3(0.5f, 1.0f, 0.5f);
-        Destroy(bodyGO.GetComponent<Collider>());
-        
-        var bodyMat = new Material(Shader.Find("Standard"));
-        bodyMat.color = new Color(0.2f, 0.6f, 1f);
-        bodyGO.GetComponent<Renderer>().sharedMaterial = bodyMat;
-        
-        // Wings
-        var wingGO = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        wingGO.name = "Wings";
-        wingGO.transform.SetParent(playerGO.transform);
-        wingGO.transform.localPosition = new Vector3(0, 0, 0);
-        wingGO.transform.localScale = new Vector3(1.5f, 0.08f, 0.6f);
-        Destroy(wingGO.GetComponent<Collider>());
-        wingGO.GetComponent<Renderer>().sharedMaterial = bodyMat;
-        
-        // Propeller hub
-        var propHubGO = new GameObject("PropellerHub");
-        propHubGO.transform.SetParent(playerGO.transform);
-        propHubGO.transform.localPosition = new Vector3(0, 0.3f, 0.5f);
-        
-        // Propeller blade 1
-        var blade1 = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        blade1.name = "Blade1";
-        blade1.transform.SetParent(propHubGO.transform);
-        blade1.transform.localPosition = new Vector3(0.4f, 0, 0);
-        blade1.transform.localScale = new Vector3(0.8f, 0.05f, 0.15f);
-        Destroy(blade1.GetComponent<Collider>());
-        var propMat = new Material(Shader.Find("Standard"));
-        propMat.color = Color.gray;
-        blade1.GetComponent<Renderer>().sharedMaterial = propMat;
-        
-        // Propeller blade 2
-        var blade2 = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        blade2.name = "Blade2";
-        blade2.transform.SetParent(propHubGO.transform);
-        blade2.transform.localPosition = new Vector3(-0.4f, 0, 0);
-        blade2.transform.localScale = new Vector3(0.8f, 0.05f, 0.15f);
-        Destroy(blade2.GetComponent<Collider>());
-        blade2.GetComponent<Renderer>().sharedMaterial = propMat;
-        
+
+        // Load 3D Cartoon Airplane from AwesomeCartoonPlanes
+        string planePath = "Assets/AwesomeCartoonPlanes/Prefabs/Plane1.prefab";
+        var planeAsset = AssetDatabase.LoadAssetAtPath<GameObject>(planePath);
+        Transform propTransform = null;
+
+        if (planeAsset != null)
+        {
+            var visual = (GameObject)PrefabUtility.InstantiatePrefab(planeAsset);
+            PrefabUtility.UnpackPrefabInstance(visual, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
+            visual.name = "PlaneVisual";
+            visual.transform.SetParent(playerGO.transform, false);
+            visual.transform.localPosition = Vector3.zero;
+            visual.transform.localRotation = Quaternion.identity; // In Plane1.prefab, fuselage points forward (+Z)
+            visual.transform.localScale = Vector3.one * 0.45f;
+
+            // Remove demo scripts
+            foreach (var s in visual.GetComponentsInChildren<MonoBehaviour>())
+            {
+                if (s is not PlayerController) Destroy(s);
+            }
+            foreach (var col in visual.GetComponentsInChildren<Collider>()) Destroy(col);
+
+            // Configure propeller: hide static prop, show blurred spinning prop
+            var propStatic = visual.transform.Find("Prop1");
+            if (propStatic != null) propStatic.gameObject.SetActive(false);
+
+            var propBlur = visual.transform.Find("Prop1Blur");
+            if (propBlur != null)
+            {
+                propBlur.gameObject.SetActive(true);
+                propTransform = propBlur;
+            }
+            else if (propStatic != null)
+            {
+                propStatic.gameObject.SetActive(true);
+                propTransform = propStatic;
+            }
+        }
+        else
+        {
+            var body = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+            body.transform.SetParent(playerGO.transform, false);
+            body.transform.localScale = new Vector3(0.5f, 0.5f, 0.8f);
+            Destroy(body.GetComponent<Collider>());
+        }
+
         // Add PlayerController
         var ctrl = playerGO.AddComponent<PlayerController>();
-        ctrl.propeller = propHubGO.transform;
-        
+        ctrl.propeller = propTransform;
+
         // Player Rigidbody
-        var rb = playerGO.GetComponent<Rigidbody>();
-        if (rb == null) rb = playerGO.AddComponent<Rigidbody>();
+        var rb = playerGO.AddComponent<Rigidbody>();
         rb.useGravity = false;
         rb.constraints = RigidbodyConstraints.FreezePositionY | RigidbodyConstraints.FreezeRotation;
-        
-        // Player Collider (trigger)
-        var col = playerGO.AddComponent<CapsuleCollider>();
-        col.height = 1.5f;
-        col.radius = 0.4f;
-        col.isTrigger = true;
-        
-        playerGO.transform.position = new Vector3(0, 0.5f, 0);
-        
+        rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
+
+        // Player Collider (trigger aligned along Z fuselage axis)
+        var playerCol = playerGO.AddComponent<CapsuleCollider>();
+        playerCol.direction = 2;
+        playerCol.height = 1.8f;
+        playerCol.radius = 0.5f;
+        playerCol.isTrigger = true;
+
+        playerGO.transform.position = new Vector3(0, 0.5f, -16f);
+
         return playerGO;
     }
     
@@ -687,6 +788,8 @@ public static class SceneBuilder
         var go = new GameObject(name, typeof(RectTransform));
         go.transform.SetParent(parent, false);
         var tmp = go.AddComponent<TextMeshProUGUI>();
+        var font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>("Assets/TextMesh Pro/Examples & Extras/Resources/Fonts & Materials/Roboto-Bold SDF.asset");
+        if (font != null) tmp.font = font;
         tmp.text = text;
         tmp.fontSize = 32;
         tmp.color = Color.white;
@@ -722,6 +825,8 @@ public static class SceneBuilder
         var labelGO = new GameObject("Text", typeof(RectTransform));
         labelGO.transform.SetParent(go.transform, false);
         var tmp = labelGO.AddComponent<TextMeshProUGUI>();
+        var font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>("Assets/TextMesh Pro/Examples & Extras/Resources/Fonts & Materials/Roboto-Bold SDF.asset");
+        if (font != null) tmp.font = font;
         tmp.text = text;
         tmp.fontSize = 28;
         tmp.color = Color.white;

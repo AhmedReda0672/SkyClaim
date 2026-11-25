@@ -104,38 +104,37 @@ public static class SkyClaimAutomatedTests
     {
         var go = new GameObject("TestGrid");
         var grid = go.AddComponent<TerritoryGrid>();
-        grid.gridWidth = 40;
-        grid.gridHeight = 30;
+        grid.gridWidth = 44;
+        grid.gridHeight = 34;
+        grid.borderThickness = 2;
         grid.cellSize = 1f;
         grid.Initialize();
 
         Assert.IsNotNull(grid.Grid, "Grid state array must be initialized.");
 
-        // Check outer wall
-        for (int x = 0; x < 40; x++)
+        // Check 2-cell-thick outer black border (Wall)
+        for (int x = 0; x < 44; x++)
         {
             Assert.AreEqual(CellState.Wall, grid.GetCellState(x, 0), $"Cell ({x}, 0) must be Wall.");
-            Assert.AreEqual(CellState.Wall, grid.GetCellState(x, 29), $"Cell ({x}, 29) must be Wall.");
+            Assert.AreEqual(CellState.Wall, grid.GetCellState(x, 1), $"Cell ({x}, 1) must be Wall.");
+            Assert.AreEqual(CellState.Wall, grid.GetCellState(x, 32), $"Cell ({x}, 32) must be Wall.");
+            Assert.AreEqual(CellState.Wall, grid.GetCellState(x, 33), $"Cell ({x}, 33) must be Wall.");
         }
-        for (int y = 0; y < 30; y++)
+        for (int y = 0; y < 34; y++)
         {
             Assert.AreEqual(CellState.Wall, grid.GetCellState(0, y), $"Cell (0, {y}) must be Wall.");
-            Assert.AreEqual(CellState.Wall, grid.GetCellState(39, y), $"Cell (39, {y}) must be Wall.");
+            Assert.AreEqual(CellState.Wall, grid.GetCellState(1, y), $"Cell (1, {y}) must be Wall.");
+            Assert.AreEqual(CellState.Wall, grid.GetCellState(42, y), $"Cell (42, {y}) must be Wall.");
+            Assert.AreEqual(CellState.Wall, grid.GetCellState(43, y), $"Cell (43, {y}) must be Wall.");
         }
 
-        // Check inner captured border
-        for (int x = 1; x < 39; x++)
-        {
-            Assert.AreEqual(CellState.Captured, grid.GetCellState(x, 1), $"Cell ({x}, 1) must be Captured.");
-            Assert.AreEqual(CellState.Captured, grid.GetCellState(x, 28), $"Cell ({x}, 28) must be Captured.");
-        }
+        // Check interior 40x30 starts completely Unclaimed
+        Assert.AreEqual(CellState.Unclaimed, grid.GetCellState(2, 2), "Inner corner (2,2) must start Unclaimed.");
+        Assert.AreEqual(CellState.Unclaimed, grid.GetCellState(20, 15), "Center cell (20,15) must start Unclaimed.");
 
-        // Check center is unclaimed
-        Assert.AreEqual(CellState.Unclaimed, grid.GetCellState(20, 15), "Center cell (20,15) must be Unclaimed.");
-
-        // Check initial captured percent is non-zero (due to inner border) and less than 30%
+        // Check initial captured percent is 0%
         float initialPct = grid.GetCapturedPercent();
-        Assert.IsTrue(initialPct > 5f && initialPct < 30f, $"Initial percentage {initialPct}% should reflect inner border ring.");
+        Assert.AreEqual(0f, initialPct, 0.001f, $"Initial percentage {initialPct}% must start at 0%.");
 
         GameObject.DestroyImmediate(go);
     }

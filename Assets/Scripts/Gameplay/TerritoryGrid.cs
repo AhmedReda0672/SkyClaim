@@ -15,8 +15,9 @@ public class TerritoryGrid : MonoBehaviour
     public static TerritoryGrid Instance { get; private set; }
 
     [Header("Grid Settings")]
-    public int gridWidth = 40;
-    public int gridHeight = 30;
+    public int gridWidth = 44;
+    public int gridHeight = 34;
+    public int borderThickness = 2;
     public float cellSize = 1f;
 
     [Header("Materials")]
@@ -40,6 +41,7 @@ public class TerritoryGrid : MonoBehaviour
 
     // Events
     public event Action<float> OnCapturedPercentChanged;
+    public event Action<List<Vector3>> OnCellsCaptured; // fires with world positions of newly captured cells
 
     // Enemy reference cache
     private EnemyBall[] _cachedEnemies;
@@ -65,6 +67,15 @@ public class TerritoryGrid : MonoBehaviour
             skyGO.AddComponent<SkyEnvironment>();
         }
 
+        // Ensure floor collider prevents anything passing through ground
+        if (GameObject.Find("ArenaFloor") == null)
+        {
+            var floorGO = new GameObject("ArenaFloor");
+            var col = floorGO.AddComponent<BoxCollider>();
+            col.size = new Vector3(gridWidth * cellSize + 4f, 0.1f, gridHeight * cellSize + 4f);
+            floorGO.transform.position = new Vector3(0f, -0.05f, 0f);
+        }
+
         // Clean up old visuals
         if (_gridParent != null)
             Destroy(_gridParent.gameObject);
@@ -77,20 +88,15 @@ public class TerritoryGrid : MonoBehaviour
         _currentTrail = new List<Vector2Int>();
         _isDrawingTrail = false;
 
-        // Set cell states
+        // Set cell states: 2-cell black outer safe border + 40x30 unclaimed interior (starts at 0% captured)
         for (int x = 0; x < gridWidth; x++)
         {
             for (int y = 0; y < gridHeight; y++)
             {
-                if (x == 0 || y == 0 || x == gridWidth - 1 || y == gridHeight - 1)
+                if (x < borderThickness || y < borderThickness || x >= gridWidth - borderThickness || y >= gridHeight - borderThickness)
                 {
-                    // Outer border = Wall
+                    // Outer safe black border (double width)
                     Grid[x, y] = CellState.Wall;
-                }
-                else if (x == 1 || y == 1 || x == gridWidth - 2 || y == gridHeight - 2)
-                {
-                    // Inner border = Captured (starting territory)
-                    Grid[x, y] = CellState.Captured;
                 }
                 else
                 {
@@ -217,8 +223,12 @@ public class TerritoryGrid : MonoBehaviour
 
         if (state == CellState.Wall)
         {
-            // Can't enter wall
-            return false;
+            // Safe black outer border: returning here closes any active trail
+            if (_isDrawingTrail && _currentTrail.Count > 0)
+            {
+                CloseTrail();
+            }
+            return true;
         }
 
         if (state == CellState.Trail)
@@ -270,11 +280,14 @@ public class TerritoryGrid : MonoBehaviour
             Grid[pos.x, pos.y] = CellState.Captured;
         }
 
-        // Run flood fill to capture enclosed areas
-        int newlyCaptured = RunFloodFillCapture();
+        // Run flood fill to capture enclosed areas — collect newly captured world positions
+        List<Vector3> newlyCapturedPositions = new List<Vector3>();
+        int newlyCaptured = RunFloodFillCaptureWithPositions(newlyCapturedPositions);
 
         // Add the trail cells themselves to the count
         newlyCaptured += _currentTrail.Count;
+        foreach (var trailPos in _currentTrail)
+            newlyCapturedPositions.Add(GridToWorld(trailPos));
 
         // Clear trail
         _currentTrail.Clear();
@@ -284,9 +297,11 @@ public class TerritoryGrid : MonoBehaviour
         RefreshAllVisuals();
         CountCells();
 
-        // Fire event
+        // Fire events
         float percent = GetCapturedPercent();
         OnCapturedPercentChanged?.Invoke(percent);
+        if (newlyCapturedPositions.Count > 0)
+            OnCellsCaptured?.Invoke(newlyCapturedPositions);
 
         // Award score
         if (ScoreManager.Instance != null && newlyCaptured > 0)
@@ -307,6 +322,12 @@ public class TerritoryGrid : MonoBehaviour
     /// 5. If no enemies exist anywhere (e.g. tests), capture the smaller component(s).
     /// </summary>
     private int RunFloodFillCapture()
+    {
+        List<Vector3> dummy = new List<Vector3>();
+        return RunFloodFillCaptureWithPositions(dummy);
+    }
+
+    private int RunFloodFillCaptureWithPositions(List<Vector3> capturedPositions)
     {
         // 1. Gather grid positions of all active enemy balls
         HashSet<Vector2Int> enemyCells = new HashSet<Vector2Int>();
@@ -402,6 +423,7 @@ public class TerritoryGrid : MonoBehaviour
                     {
                         Grid[cell.x, cell.y] = CellState.Captured;
                         totalNewlyCaptured++;
+                        capturedPositions.Add(GridToWorld(cell));
                     }
                 }
             }
@@ -428,6 +450,7 @@ public class TerritoryGrid : MonoBehaviour
                     {
                         Grid[cell.x, cell.y] = CellState.Captured;
                         totalNewlyCaptured++;
+                        capturedPositions.Add(GridToWorld(cell));
                     }
                 }
             }
@@ -482,11 +505,21 @@ public class TerritoryGrid : MonoBehaviour
 
     public Vector3 GetRandomUnclaimedPosition()
     {
+        // Prefer at least 1 cell inside the border so spawns don't hug the edge, fallback to any unclaimed cell
+        int innerMargin = borderThickness + 1;
         List<Vector2Int> unclaimed = new List<Vector2Int>();
-        for (int x = 2; x < gridWidth - 2; x++)
-            for (int y = 2; y < gridHeight - 2; y++)
+        for (int x = innerMargin; x < gridWidth - innerMargin; x++)
+            for (int y = innerMargin; y < gridHeight - innerMargin; y++)
                 if (Grid[x, y] == CellState.Unclaimed)
                     unclaimed.Add(new Vector2Int(x, y));
+
+        if (unclaimed.Count == 0)
+        {
+            for (int x = borderThickness; x < gridWidth - borderThickness; x++)
+                for (int y = borderThickness; y < gridHeight - borderThickness; y++)
+                    if (Grid[x, y] == CellState.Unclaimed)
+                        unclaimed.Add(new Vector2Int(x, y));
+        }
 
         if (unclaimed.Count == 0) return Vector3.zero;
         return GridToWorld(unclaimed[UnityEngine.Random.Range(0, unclaimed.Count)]);
@@ -494,27 +527,46 @@ public class TerritoryGrid : MonoBehaviour
 
     public Vector3 GetRandomCapturedPosition(Vector3 avoidPos, float minDist)
     {
-        List<Vector2Int> captured = new List<Vector2Int>();
-        for (int x = 1; x < gridWidth - 1; x++)
+        List<Vector2Int> candidates = new List<Vector2Int>();
+        for (int x = 0; x < gridWidth; x++)
         {
-            for (int y = 1; y < gridHeight - 1; y++)
+            for (int y = 0; y < gridHeight; y++)
             {
                 if (Grid[x, y] == CellState.Captured)
                 {
                     Vector3 worldPos = GridToWorld(new Vector2Int(x, y));
                     if (Vector3.Distance(worldPos, avoidPos) >= minDist)
-                        captured.Add(new Vector2Int(x, y));
+                        candidates.Add(new Vector2Int(x, y));
                 }
             }
         }
-        if (captured.Count == 0) return GridToWorld(new Vector2Int(1, 1));
-        return GridToWorld(captured[UnityEngine.Random.Range(0, captured.Count)]);
+
+        // At level start (0% captured), spawn mines on the safe black border far from player spawn
+        if (candidates.Count == 0)
+        {
+            for (int x = 0; x < gridWidth; x++)
+            {
+                for (int y = 0; y < gridHeight; y++)
+                {
+                    if (Grid[x, y] == CellState.Wall)
+                    {
+                        Vector3 worldPos = GridToWorld(new Vector2Int(x, y));
+                        if (Vector3.Distance(worldPos, avoidPos) >= minDist)
+                            candidates.Add(new Vector2Int(x, y));
+                    }
+                }
+            }
+        }
+
+        if (candidates.Count == 0) return GridToWorld(new Vector2Int(gridWidth / 2, gridHeight - 1));
+        return GridToWorld(candidates[UnityEngine.Random.Range(0, candidates.Count)]);
     }
 
     public Vector3 GetSpawnPosition()
     {
-        // Return a position near the inner border on the bottom-left
-        return GridToWorld(new Vector2Int(2, 2));
+        // Bottom-center on the 2-cell-thick black outer border
+        Vector3 origin = GetOrigin();
+        return new Vector3(0f, 0.5f, origin.z + cellSize * (borderThickness * 0.5f));
     }
 
     public void ClearTrail()
@@ -548,8 +600,27 @@ public class TerritoryGrid : MonoBehaviour
         return pos.x >= 0 && pos.x < gridWidth && pos.y >= 0 && pos.y < gridHeight;
     }
 
+    public bool IsSafeZone(int x, int y)
+    {
+        if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight) return false;
+        return Grid[x, y] == CellState.Wall || Grid[x, y] == CellState.Captured;
+    }
+
+    /// <summary>
+    /// Checks whether a world-space XZ coordinate lies inside a safe cell (Wall or Captured)
+    /// without clamping out-of-bounds coordinates to the border.
+    /// </summary>
+    public bool IsSafeWorldPos(float worldX, float worldZ)
+    {
+        Vector3 origin = GetOrigin();
+        int x = Mathf.FloorToInt((worldX - origin.x) / cellSize);
+        int y = Mathf.FloorToInt((worldZ - origin.z) / cellSize);
+        return IsSafeZone(x, y);
+    }
+
     private void OnDestroy()
     {
         if (Instance == this) Instance = null;
     }
 }
+

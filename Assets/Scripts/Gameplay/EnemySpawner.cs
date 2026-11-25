@@ -11,6 +11,7 @@ public class EnemySpawner : MonoBehaviour
 
     [Header("Enemy Prefab")]
     public GameObject enemyBallPrefab;
+    public GameObject[] enemyBallPrefabs;
 
     [Header("Validation Rules")]
     public float minDistanceBetweenEnemies = 3.5f;
@@ -50,14 +51,16 @@ public class EnemySpawner : MonoBehaviour
         }
         _spawnedEnemies.Clear();
 
-        if (enemyBallPrefab == null)
+        if (enemyBallPrefab == null && (enemyBallPrefabs == null || enemyBallPrefabs.Length == 0))
         {
-            Debug.LogError("[EnemySpawner] enemyBallPrefab is null!");
+            Debug.LogError("[EnemySpawner] No enemyBallPrefab assigned!");
             return;
         }
 
-        Vector3 playerPos = PlayerController.Instance != null ?
-            PlayerController.Instance.transform.position : Vector3.zero;
+        TerritoryGrid grid = TerritoryGrid.Instance;
+        Vector3 playerPos = grid != null
+            ? grid.GetSpawnPosition()
+            : (PlayerController.Instance != null ? PlayerController.Instance.transform.position : Vector3.zero);
 
         List<Vector3> placedPositions = new List<Vector3>();
         Color[] shuffledColors = GetShuffledPalette();
@@ -70,7 +73,14 @@ public class EnemySpawner : MonoBehaviour
             Vector3 direction = GetRandomDirection();
             Color color = shuffledColors[i % shuffledColors.Length];
 
-            GameObject go = Instantiate(enemyBallPrefab, spawnPos, Quaternion.identity);
+            // Select diverse sci-fi ball model
+            GameObject prefabToUse = enemyBallPrefab;
+            if (enemyBallPrefabs != null && enemyBallPrefabs.Length > 0)
+            {
+                prefabToUse = enemyBallPrefabs[i % enemyBallPrefabs.Length];
+            }
+
+            GameObject go = Instantiate(prefabToUse, spawnPos, Quaternion.identity);
             go.name = $"EnemyBall_{i + 1}";
 
             EnemyBall ball = go.GetComponent<EnemyBall>();

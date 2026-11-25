@@ -26,14 +26,16 @@ public class MineController : MonoBehaviour
         _rb = GetComponent<Rigidbody>();
         _rb.useGravity = false;
         _rb.constraints = RigidbodyConstraints.FreezePositionY | RigidbodyConstraints.FreezeRotation;
+        _rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
     }
 
     private void Start()
     {
         _grid = TerritoryGrid.Instance;
-        Vector2 dir = Random.insideUnitCircle.normalized;
-        if (dir == Vector2.zero) dir = new Vector2(1f, 1f).normalized;
-        _velocity = new Vector3(dir.x, 0f, dir.y).normalized * speed;
+        // Pick a lively diagonal angle so mines weave across the black border and enter blue captured zones
+        float[] angles = { 35f, 55f, 125f, 145f, 215f, 235f, 305f, 325f };
+        float rad = angles[Random.Range(0, angles.Length)] * Mathf.Deg2Rad;
+        _velocity = new Vector3(Mathf.Cos(rad), 0f, Mathf.Sin(rad)).normalized * speed;
 
         StartCoroutine(SpinRoutine());
     }
@@ -57,27 +59,41 @@ public class MineController : MonoBehaviour
 
         if (_grid != null)
         {
-            Vector2Int checkCellX = _grid.WorldToGrid(new Vector3(newPos.x, 0f, _rb.position.z));
-            Vector2Int checkCellZ = _grid.WorldToGrid(new Vector3(_rb.position.x, 0f, newPos.z));
+            const float edgeOffset = 0.25f;
+            float offsetX = Mathf.Abs(_velocity.x) > 0.001f ? Mathf.Sign(_velocity.x) * edgeOffset : 0f;
+            float offsetZ = Mathf.Abs(_velocity.z) > 0.001f ? Mathf.Sign(_velocity.z) * edgeOffset : 0f;
 
-            CellState stateX = _grid.GetCellState(checkCellX.x, checkCellX.y);
-            CellState stateZ = _grid.GetCellState(checkCellZ.x, checkCellZ.y);
+            // Check unclamped world coordinates so outer grid edges properly bounce inward
+            bool safeX = _grid.IsSafeWorldPos(newPos.x + offsetX, _rb.position.z);
+            bool safeZ = _grid.IsSafeWorldPos(_rb.position.x, newPos.z + offsetZ);
 
-            // Mines only navigate CAPTURED cells — bounce off Unclaimed, Trail, and Wall
-            if (stateX != CellState.Captured)
+            // Mines patrol safe border (Wall) + Captured cells — bounce off Unclaimed, Trail, and outer void
+            if (!safeX)
+                _velocity.x = -_velocity.x;
+
+            if (!safeZ)
+                _velocity.z = -_velocity.z;
+
+            if (safeX && safeZ && !_grid.IsSafeWorldPos(newPos.x + offsetX, newPos.z + offsetZ))
             {
                 _velocity.x = -_velocity.x;
-            }
-
-            if (stateZ != CellState.Captured)
-            {
                 _velocity.z = -_velocity.z;
             }
 
             if (_velocity != Vector3.zero)
                 _velocity = _velocity.normalized * speed;
 
-            newPos = _rb.position + _velocity * Time.fixedDeltaTime;
+            float stepX = safeX ? _velocity.x * Time.fixedDeltaTime : 0f;
+            float stepZ = safeZ ? _velocity.z * Time.fixedDeltaTime : 0f;
+            newPos = _rb.position + new Vector3(stepX, 0f, stepZ);
+
+            if (!_grid.IsSafeWorldPos(newPos.x, newPos.z))
+                newPos = _rb.position;
+
+            float halfW = _grid.gridWidth * _grid.cellSize * 0.5f - edgeOffset;
+            float halfH = _grid.gridHeight * _grid.cellSize * 0.5f - edgeOffset;
+            newPos.x = Mathf.Clamp(newPos.x, -halfW, halfW);
+            newPos.z = Mathf.Clamp(newPos.z, -halfH, halfH);
         }
 
         newPos.y = 0.5f;

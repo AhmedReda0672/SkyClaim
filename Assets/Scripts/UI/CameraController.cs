@@ -11,15 +11,15 @@ using UnityEngine;
 public class CameraController : MonoBehaviour
 {
     [Header("AirXonix Authentic Framing")]
-    [Tooltip("Camera elevation above the arena floor (AirXonix optimal = 31)")]
-    public float height = 31f;
+    [Tooltip("Camera elevation above the arena floor (44x34 optimal = 34)")]
+    public float height = 34f;
 
-    [Tooltip("Camera horizontal distance offset along Z axis (AirXonix optimal = -23.5)")]
-    public float distanceZ = -23.5f;
+    [Tooltip("Camera horizontal distance offset along Z axis (44x34 optimal = -27.5)")]
+    public float distanceZ = -27.5f;
 
-    [Tooltip("Camera downward tilt pitch angle in degrees (AirXonix optimal = 55)")]
+    [Tooltip("Camera downward tilt pitch angle in degrees (44x34 optimal = 53)")]
     [Range(40f, 75f)]
-    public float tiltAngle = 55f;
+    public float tiltAngle = 53f;
 
     [Tooltip("Base vertical field of view for 16:9 displays (AirXonix optimal = 48)")]
     [Range(30f, 75f)]
